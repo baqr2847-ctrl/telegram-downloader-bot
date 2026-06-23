@@ -1,5 +1,6 @@
 import os
 import re
+import base64
 import yt_dlp
 import requests
 
@@ -45,14 +46,26 @@ def ytdl_download(url, platform):
         }
 
     cookies_map = {
-        'tiktok': 'tiktok_cookies.txt',
-        'instagram': 'instagram_cookies.txt',
+        'tiktok': ('TIKTOK_COOKIES_B64', 'tiktok_cookies.txt'),
+        'instagram': ('INSTAGRAM_COOKIES_B64', 'instagram_cookies.txt'),
     }
-    cookies_file = cookies_map.get(platform)
-    if cookies_file:
-        cookies_path = os.path.join(os.path.dirname(__file__), cookies_file)
-        if os.path.exists(cookies_path):
-            ydl_opts['cookiefile'] = cookies_path
+    cookie_src = cookies_map.get(platform)
+    if cookie_src:
+        env_name, file_name = cookie_src
+        env_val = os.getenv(env_name)
+        if env_val:
+            try:
+                decoded = base64.b64decode(env_val).decode()
+                cpath = os.path.join(os.path.dirname(__file__), f'_{file_name}')
+                with open(cpath, 'w', encoding='utf-8') as f:
+                    f.write(decoded)
+                ydl_opts['cookiefile'] = cpath
+            except:
+                pass
+        else:
+            cookies_path = os.path.join(os.path.dirname(__file__), file_name)
+            if os.path.exists(cookies_path):
+                ydl_opts['cookiefile'] = cookies_path
 
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
