@@ -528,11 +528,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode='HTML'
                     )
                 else:
-                    await update.message.reply_text(
-                        f"❌ <b>حدث خطأ أثناء إرسال الفيديو.</b>\n\n"
-                        f"رابط التحميل المباشر:\n{result['url']}",
-                        parse_mode='HTML'
-                    )
+                    fallback_sent = False
+                    try:
+                        import yt_dlp, uuid
+                        temp_dir = os.path.join(os.path.dirname(__file__), 'data', 'temp')
+                        os.makedirs(temp_dir, exist_ok=True)
+                        fname = str(uuid.uuid4()) + '.mp4'
+                        fpath = os.path.join(temp_dir, fname)
+                        ydl_opts = {
+                            'quiet': True, 'no_warnings': True, 'outtmpl': fpath,
+                            'format': 'best[filesize<50M]/best', 'socket_timeout': 30,
+                        }
+                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                            ydl.download([text])
+                        if os.path.exists(fpath) and os.path.getsize(fpath) < 50 * 1024 * 1024:
+                            with open(fpath, 'rb') as vid_file:
+                                await update.message.reply_video(
+                                    video=vid_file, caption=caption,
+                                    parse_mode='HTML', supports_streaming=True,
+                                    reply_markup=audio_button
+                                )
+                            fallback_sent = True
+                            try:
+                                os.remove(fpath)
+                            except:
+                                pass
+                    except:
+                        pass
+                    if not fallback_sent:
+                        await update.message.reply_text(
+                            f"❌ <b>حدث خطأ أثناء إرسال الفيديو.</b>\n\n"
+                            f"رابط التحميل المباشر:\n{result['url']}",
+                            parse_mode='HTML'
+                        )
         else:
             await status_msg.edit_text(
                 f"❌ <b>خطأ في التحميل:</b>\n{result['error']}\n\n"
