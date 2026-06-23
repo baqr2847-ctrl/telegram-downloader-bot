@@ -743,6 +743,9 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
+    import requests as _req
+    _req.get(f'https://api.telegram.org/bot{BOT_TOKEN}/close', timeout=5)
+    _req.get(f'https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook?drop_pending_updates=true', timeout=5)
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -771,10 +774,8 @@ def main():
     print(f"  👑 المطور: @{adm}")
     print("  ⏳ انتظر حتى اكتمال التهيئة...")
 
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 
 if __name__ == '__main__':
-    import requests as _req
-    _req.post(f'https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook')
     main()
