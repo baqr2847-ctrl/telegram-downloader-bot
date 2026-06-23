@@ -23,28 +23,33 @@ if not BOT_TOKEN:
     print("❌ تأكد من وجود BOT_TOKEN في ملف .env")
     exit(1)
 
-FFMPEG_PATH = shutil.which('ffmpeg')
+FFMPEG_DIR = None
 
-def _download_ffmpeg():
-    url = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-linux-x64'
+def _ensure_ffmpeg():
+    global FFMPEG_DIR
+    if shutil.which('ffmpeg'):
+        FFMPEG_DIR = None
+        return
     dl_dir = os.path.join(os.path.dirname(__file__), 'data', 'ffmpeg_static')
+    ffmpeg_path = os.path.join(dl_dir, 'ffmpeg')
+    ffprobe_path = os.path.join(dl_dir, 'ffprobe')
+    if os.path.exists(ffmpeg_path) and os.path.exists(ffprobe_path):
+        FFMPEG_DIR = dl_dir
+        return
     os.makedirs(dl_dir, exist_ok=True)
-    binpath = os.path.join(dl_dir, 'ffmpeg')
-    print(f"  ⬇️ جاري تحميل FFmpeg...")
-    urllib.request.urlretrieve(url, binpath)
-    os.chmod(binpath, os.stat(binpath).st_mode | stat.S_IEXEC)
-    return binpath
+    base = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0'
+    print("  ⬇️ جاري تحميل FFmpeg...")
+    urllib.request.urlretrieve(f'{base}/ffmpeg-linux-x64', ffmpeg_path)
+    os.chmod(ffmpeg_path, os.stat(ffmpeg_path).st_mode | stat.S_IEXEC)
+    print("  ⬇️ جاري تحميل FFprobe...")
+    urllib.request.urlretrieve(f'{base}/ffprobe-linux-x64', ffprobe_path)
+    os.chmod(ffprobe_path, os.stat(ffprobe_path).st_mode | stat.S_IEXEC)
+    FFMPEG_DIR = dl_dir
 
-if not FFMPEG_PATH:
-    cached = os.path.join(os.path.dirname(__file__), 'data', 'ffmpeg_static', 'ffmpeg')
-    if os.path.exists(cached):
-        FFMPEG_PATH = cached
-    else:
-        try:
-            FFMPEG_PATH = _download_ffmpeg()
-        except Exception as e:
-            print(f"  ⚠️ تعذر تحميل FFmpeg: {e}")
-            FFMPEG_PATH = None
+try:
+    _ensure_ffmpeg()
+except Exception as e:
+    print(f"  ⚠️ تعذر تحميل FFmpeg: {e}")
 
 CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', '@z0taw')
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'e7_6w')
@@ -587,7 +592,7 @@ async def convert_to_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'quiet': True,
             'no_warnings': True,
             'socket_timeout': 30,
-            'ffmpeg_location': FFMPEG_PATH,
+            'ffmpeg_location': FFMPEG_DIR,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -793,8 +798,8 @@ def main():
     app.add_handler(CommandHandler("unban", unban))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    ffmpeg_ok = FFMPEG_PATH is not None and (os.path.exists(FFMPEG_PATH) or shutil.which(FFMPEG_PATH))
-    print(f"  🎵 FFmpeg: {'✅ مثبت' if ffmpeg_ok else '❌ غير مثبت'}" + (f' ({FFMPEG_PATH})' if FFMPEG_PATH else ''))
+    ffmpeg_ok = shutil.which('ffmpeg') or (FFMPEG_DIR and os.path.exists(os.path.join(FFMPEG_DIR, 'ffmpeg')))
+    print(f"  🎵 FFmpeg: {'✅ مثبت' if ffmpeg_ok else '❌ غير مثبت'}" + (f' (static)' if FFMPEG_DIR else ' (نظامي)'))
 
     ch = get_channel()
     adm = get_admin()
