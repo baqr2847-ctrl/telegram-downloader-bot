@@ -85,6 +85,21 @@ def ytdl_download(url, platform):
 
 
 def instagram_fallback(url):
+    # Try yt-dlp with ddinstagram proxy
+    try:
+        dd_url = url.replace('instagram.com', 'ddinstagram.com').replace('instagr.am', 'ddinstagram.com')
+        opts = {'quiet': True, 'no_warnings': True, 'extract_flat': False, 'skip_download': True, 'socket_timeout': 20}
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(dd_url, download=False)
+            title = info.get('title', 'Instagram Video')[:100]
+            for fmt in info.get('formats', []):
+                if fmt.get('vcodec') != 'none' and fmt.get('ext') in ('mp4', 'webm') and fmt.get('url'):
+                    return {'success': True, 'url': fmt['url'], 'title': title, 'platform': 'instagram'}
+            if info.get('url'):
+                return {'success': True, 'url': info['url'], 'title': title, 'platform': 'instagram'}
+    except:
+        pass
+
     try:
         resp = requests.get(f'https://instasave.io/api/?url={url}', headers=HEADERS, timeout=15)
         data = resp.json()
@@ -224,6 +239,8 @@ def download_media(url):
 
         if 'Private video' in err_msg:
             return {'success': False, 'error': 'هذا الفيديو خاص ولا يمكن تحميله.'}
+        if 'not available to everyone' in err_msg.lower():
+            return {'success': False, 'error': 'هذا المحتوى غير متاح في منطقتك (مقيد جغرافياً).'}
         if 'Video unavailable' in err_msg or 'This video is not available' in err_msg:
             return {'success': False, 'error': 'هذا الفيديو غير متاح.'}
         if 'HTTP Error 404' in err_msg:

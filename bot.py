@@ -4,7 +4,6 @@ import asyncio
 import shutil
 import urllib.request
 import stat
-import tarfile
 
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
