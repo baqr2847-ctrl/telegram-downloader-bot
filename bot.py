@@ -775,4 +775,6 @@ def main():
 
 
 if __name__ == '__main__':
+    import requests as _req
+    _req.post(f'https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook')
     main()
