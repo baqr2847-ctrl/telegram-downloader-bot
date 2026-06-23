@@ -36,6 +36,14 @@ def ytdl_download(url, platform):
         'extractor_args': {'youtube': {'skip': ['dash', 'hls']}},
     }
 
+    if platform == 'instagram':
+        ydl_opts['extractor_args'] = {'instagram': {'api': ['mobile']}}
+        ydl_opts['add_headers'] = {
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
+
     cookies_map = {
         'tiktok': 'tiktok_cookies.txt',
         'instagram': 'instagram_cookies.txt',
@@ -85,12 +93,19 @@ def ytdl_download(url, platform):
 
 
 def instagram_fallback(url):
-    # Try yt-dlp with ddinstagram proxy
+    # Try yt-dlp with mobile API
     try:
-        dd_url = url.replace('instagram.com', 'ddinstagram.com').replace('instagr.am', 'ddinstagram.com')
-        opts = {'quiet': True, 'no_warnings': True, 'extract_flat': False, 'skip_download': True, 'socket_timeout': 20}
+        opts = {
+            'quiet': True, 'no_warnings': True, 'extract_flat': False, 'skip_download': True, 'socket_timeout': 30,
+            'extractor_args': {'instagram': {'api': ['mobile']}},
+            'add_headers': {
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+            },
+        }
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(dd_url, download=False)
+            info = ydl.extract_info(url, download=False)
             title = info.get('title', 'Instagram Video')[:100]
             for fmt in info.get('formats', []):
                 if fmt.get('vcodec') != 'none' and fmt.get('ext') in ('mp4', 'webm') and fmt.get('url'):
@@ -100,32 +115,46 @@ def instagram_fallback(url):
     except:
         pass
 
+    # Try Instagram CDN directly via oEmbed
     try:
-        resp = requests.get(f'https://instasave.io/api/?url={url}', headers=HEADERS, timeout=15)
-        data = resp.json()
-        if data.get('url'):
-            return {'success': True, 'url': data['url'], 'title': 'Instagram Video', 'platform': 'instagram'}
-        if data.get('medias'):
-            medias = data['medias']
-            vid = None
-            for m in medias:
-                if m.get('type') == 'video':
-                    vid = m
-                    break
-            if not vid:
-                vid = medias[0]
-            if vid and vid.get('url'):
-                return {'success': True, 'url': vid['url'], 'title': 'Instagram Content', 'platform': 'instagram'}
+        code_match = re.search(r'(?:reel|p)/([A-Za-z0-9_-]+)', url)
+        if code_match:
+            code = code_match.group(1)
+            resp = requests.get(
+                f'https://i.instagram.com/api/v1/media/{code}/info/',
+                headers={
+                    'User-Agent': 'Instagram 123.0.0.21.115 Android',
+                    'Accept': '*/*',
+                },
+                timeout=15,
+            )
+            data = resp.json()
+            items = data.get('items', [])
+            if items:
+                vid_versions = items[0].get('video_versions', [])
+                if vid_versions:
+                    return {'success': True, 'url': vid_versions[0]['url'], 'title': 'Instagram Video', 'platform': 'instagram'}
     except:
         pass
 
-    try:
-        resp = requests.get(f'https://api.socialdownloader.com/api/v1/instagram?url={url}', headers=HEADERS, timeout=15)
-        data = resp.json()
-        if data.get('video'):
-            return {'success': True, 'url': data['video'], 'title': 'Instagram Video', 'platform': 'instagram'}
-    except:
-        pass
+    # Try third-party downloader APIs
+    for api_url in [
+        f'https://instasave.io/api/?url={url}',
+        f'https://api.socialdownloader.com/api/v1/instagram?url={url}',
+        f'https://indown.io/api/info?url={url}',
+    ]:
+        try:
+            resp = requests.get(api_url, headers=HEADERS, timeout=15)
+            data = resp.json()
+            vid = data.get('url') or data.get('video') or data.get('download_url')
+            if vid:
+                return {'success': True, 'url': vid, 'title': 'Instagram Video', 'platform': 'instagram'}
+            if data.get('medias'):
+                for m in data['medias']:
+                    if m.get('type') == 'video' and m.get('url'):
+                        return {'success': True, 'url': m['url'], 'title': 'Instagram Content', 'platform': 'instagram'}
+        except:
+            pass
 
     return None
 
