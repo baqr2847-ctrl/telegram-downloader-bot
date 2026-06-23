@@ -26,25 +26,13 @@ if not BOT_TOKEN:
 FFMPEG_PATH = shutil.which('ffmpeg')
 
 def _download_ffmpeg():
-    import platform as _plat
-    bits = _plat.machine()
-    arch = 'amd64' if bits in ('AMD64', 'x86_64') else ('arm64' if bits in ('aarch64', 'arm64') else 'i686')
-    fname = f'ffmpeg-6.0-linux-{arch}.tar.xz'
-    url = f'https://johnvansickle.com/ffmpeg/builds/{fname}'
+    url = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.0/ffmpeg-linux-x64'
     dl_dir = os.path.join(os.path.dirname(__file__), 'data', 'ffmpeg_static')
     os.makedirs(dl_dir, exist_ok=True)
-    tarpath = os.path.join(dl_dir, fname)
-    print(f"  ⬇️ جاري تحميل FFmpeg...")
-    urllib.request.urlretrieve(url, tarpath)
-    print(f"  📦 جاري فك الضغط...")
-    with tarfile.open(tarpath, 'r:xz') as tar:
-        for m in tar.getmembers():
-            if m.name.endswith('ffmpeg'):
-                m.name = os.path.basename(m.name)
-                tar.extract(m, dl_dir)
     binpath = os.path.join(dl_dir, 'ffmpeg')
+    print(f"  ⬇️ جاري تحميل FFmpeg...")
+    urllib.request.urlretrieve(url, binpath)
     os.chmod(binpath, os.stat(binpath).st_mode | stat.S_IEXEC)
-    os.remove(tarpath)
     return binpath
 
 if not FFMPEG_PATH:
