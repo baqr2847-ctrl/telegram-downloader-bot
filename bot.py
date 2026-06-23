@@ -744,7 +744,6 @@ async def admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     import requests as _req
-    _req.get(f'https://api.telegram.org/bot{BOT_TOKEN}/close', timeout=5)
     _req.get(f'https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook?drop_pending_updates=true', timeout=5)
     app = Application.builder().token(BOT_TOKEN).build()
 
@@ -765,6 +764,14 @@ def main():
     app.add_handler(CommandHandler("ban", ban))
     app.add_handler(CommandHandler("unban", unban))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    import subprocess
+    try:
+        r = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=10)
+        ffmpeg_ok = r.returncode == 0
+    except:
+        ffmpeg_ok = False
+    print(f"  🎵 FFmpeg: {'✅ مثبت' if ffmpeg_ok else '❌ غير مثبت'}")
 
     ch = get_channel()
     adm = get_admin()
