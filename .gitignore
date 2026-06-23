@@ -1,0 +1,9 @@
+.env
+*.log
+__pycache__/
+*.pyc
+data/users.json
+data/config.json
+data/temp/
+tiktok_cookies.txt
+instagram_cookies.txt
