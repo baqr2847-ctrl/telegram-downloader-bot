@@ -1,6 +1,10 @@
 import os
 import logging
 import asyncio
+import shutil
+import urllib.request
+import stat
+import tarfile
 
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -18,6 +22,41 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 if not BOT_TOKEN:
     print("❌ تأكد من وجود BOT_TOKEN في ملف .env")
     exit(1)
+
+FFMPEG_PATH = shutil.which('ffmpeg')
+
+def _download_ffmpeg():
+    import platform as _plat
+    bits = _plat.machine()
+    arch = 'amd64' if bits in ('AMD64', 'x86_64') else ('arm64' if bits in ('aarch64', 'arm64') else 'i686')
+    fname = f'ffmpeg-6.0-linux-{arch}.tar.xz'
+    url = f'https://johnvansickle.com/ffmpeg/builds/{fname}'
+    dl_dir = os.path.join(os.path.dirname(__file__), 'data', 'ffmpeg_static')
+    os.makedirs(dl_dir, exist_ok=True)
+    tarpath = os.path.join(dl_dir, fname)
+    print(f"  ⬇️ جاري تحميل FFmpeg...")
+    urllib.request.urlretrieve(url, tarpath)
+    print(f"  📦 جاري فك الضغط...")
+    with tarfile.open(tarpath, 'r:xz') as tar:
+        for m in tar.getmembers():
+            if m.name.endswith('ffmpeg'):
+                m.name = os.path.basename(m.name)
+                tar.extract(m, dl_dir)
+    binpath = os.path.join(dl_dir, 'ffmpeg')
+    os.chmod(binpath, os.stat(binpath).st_mode | stat.S_IEXEC)
+    os.remove(tarpath)
+    return binpath
+
+if not FFMPEG_PATH:
+    cached = os.path.join(os.path.dirname(__file__), 'data', 'ffmpeg_static', 'ffmpeg')
+    if os.path.exists(cached):
+        FFMPEG_PATH = cached
+    else:
+        try:
+            FFMPEG_PATH = _download_ffmpeg()
+        except Exception as e:
+            print(f"  ⚠️ تعذر تحميل FFmpeg: {e}")
+            FFMPEG_PATH = None
 
 CHANNEL_USERNAME = os.getenv('CHANNEL_USERNAME', '@z0taw')
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'e7_6w')
@@ -560,6 +599,7 @@ async def convert_to_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'quiet': True,
             'no_warnings': True,
             'socket_timeout': 30,
+            'ffmpeg_location': FFMPEG_PATH,
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -765,13 +805,8 @@ def main():
     app.add_handler(CommandHandler("unban", unban))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    import subprocess
-    try:
-        r = subprocess.run(['ffmpeg', '-version'], capture_output=True, text=True, timeout=10)
-        ffmpeg_ok = r.returncode == 0
-    except:
-        ffmpeg_ok = False
-    print(f"  🎵 FFmpeg: {'✅ مثبت' if ffmpeg_ok else '❌ غير مثبت'}")
+    ffmpeg_ok = FFMPEG_PATH is not None and (os.path.exists(FFMPEG_PATH) or shutil.which(FFMPEG_PATH))
+    print(f"  🎵 FFmpeg: {'✅ مثبت' if ffmpeg_ok else '❌ غير مثبت'}" + (f' ({FFMPEG_PATH})' if FFMPEG_PATH else ''))
 
     ch = get_channel()
     adm = get_admin()
