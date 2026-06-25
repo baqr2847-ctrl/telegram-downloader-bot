@@ -105,11 +105,64 @@ def ytdl_download(url, platform):
         return {'success': True, 'url': best_url, 'title': title, 'platform': platform}
 
 
+def _instagram_cookies():
+    cookies = {}
+    val = os.getenv('INSTAGRAM_COOKIES_B64') or ''
+    try:
+        text = base64.b64decode(val).decode()
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split('\t')
+            if len(parts) >= 7:
+                cookies[parts[5]] = parts[6]
+    except:
+        pass
+    return cookies
+
+
 def instagram_fallback(url):
     code_match = re.search(r'(?:reel|p)/([A-Za-z0-9_-]+)', url)
     code = code_match.group(1) if code_match else None
     if not code:
         return None
+
+    ig_cookies = _instagram_cookies()
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'X-IG-App-ID': '936619743392459',
+    })
+    if ig_cookies:
+        session.cookies.update(ig_cookies)
+
+    # Try Instagram GraphQL / page API with cookies
+    for api_url in [
+        f'https://www.instagram.com/p/{code}/?__a=1&__d=1',
+        f'https://www.instagram.com/p/{code}/?__a=1',
+    ]:
+        try:
+            resp = session.get(api_url, timeout=8)
+            if resp.status_code == 200:
+                data = resp.json()
+                items = data.get('items', []) or data.get('graphql', {}).get('shortcode_media', None)
+                if items:
+                    if isinstance(items, dict):
+                        items = [items]
+                    for item in items:
+                        if item.get('video_versions'):
+                            return {'success': True, 'url': item['video_versions'][0]['url'], 'title': 'Instagram Video', 'platform': 'instagram'}
+                        if item.get('video_url'):
+                            return {'success': True, 'url': item['video_url'], 'title': 'Instagram Video', 'platform': 'instagram'}
+                        carousel = item.get('carousel_media', [])
+                        for cm in carousel:
+                            if cm.get('video_versions'):
+                                return {'success': True, 'url': cm['video_versions'][0]['url'], 'title': 'Instagram Video', 'platform': 'instagram'}
+        except:
+            pass
 
     # Try instasupersave (reliable for public/geo content)
     try:
@@ -151,9 +204,9 @@ def instagram_fallback(url):
     except:
         pass
 
-    # Final fallback: try to actually download the video via yt-dlp (bypasses some geo checks)
+    # Final fallback: try yt-dlp download with web API (not mobile)
     try:
-        import uuid, os
+        import uuid
         temp_dir = os.path.join(os.path.dirname(__file__), 'data', 'temp')
         os.makedirs(temp_dir, exist_ok=True)
         fname = str(uuid.uuid4()) + '.mp4'
@@ -162,8 +215,17 @@ def instagram_fallback(url):
             'quiet': True, 'no_warnings': True, 'outtmpl': fpath,
             'format': 'best[filesize<50M]/best', 'socket_timeout': 30,
             'retries': 1, 'extractor_retries': 1,
-            'extractor_args': {'instagram': {'api': ['mobile']}},
+            'extractor_args': {'instagram': {'api': ['web']}},
         }
+        if ig_cookies:
+            cpath = os.path.join(os.path.dirname(__file__), f'_{code}_cookies.txt')
+            try:
+                text = base64.b64decode(os.getenv('INSTAGRAM_COOKIES_B64', '')).decode()
+                with open(cpath, 'w') as f:
+                    f.write(text)
+                ydl_opts['cookiefile'] = cpath
+            except:
+                pass
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
         if os.path.exists(fpath) and os.path.getsize(fpath) < 50 * 1024 * 1024:
