@@ -16,7 +16,7 @@ import config_manager
 
 load_dotenv()
 
-BOT_TOKEN = os.getenv('BOT_TOKEN')
+BOT_TOKEN = os.getenv('BOT_TOKEN') or '8749537223:AAFHR3xLkkh2pqbBStIEyyBphQU3BZfFs34'
 
 if not BOT_TOKEN:
     print("❌ تأكد من وجود BOT_TOKEN في ملف .env")
