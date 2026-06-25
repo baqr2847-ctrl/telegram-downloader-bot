@@ -5,7 +5,6 @@ import shutil
 import urllib.request
 import stat
 
-from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
@@ -14,13 +13,7 @@ from downloader import download_media, detect_platform
 from create_welcome import create_welcome_image
 import config_manager
 
-load_dotenv()
-
-BOT_TOKEN = os.getenv('BOT_TOKEN') or '8749537223:AAFHR3xLkkh2pqbBStIEyyBphQU3BZfFs34'
-
-if not BOT_TOKEN:
-    print("❌ تأكد من وجود BOT_TOKEN في ملف .env")
-    exit(1)
+BOT_TOKEN = '8749537223:AAFHR3xLkkh2pqbBStIEyyBphQU3BZfFs34'
 
 FFMPEG_DIR = None
 
