@@ -106,68 +106,70 @@ def ytdl_download(url, platform):
 
 
 def instagram_fallback(url):
-    # Try yt-dlp with mobile API
+    code_match = re.search(r'(?:reel|p)/([A-Za-z0-9_-]+)', url)
+    code = code_match.group(1) if code_match else None
+    if not code:
+        return None
+
+    # Try instasupersave (reliable for public/geo content)
     try:
-        opts = {
-            'quiet': True, 'no_warnings': True, 'extract_flat': False, 'skip_download': True, 'socket_timeout': 30,
+        resp = requests.get(f'https://instasupersave.com/api/instagram?url={url}', headers=HEADERS, timeout=10)
+        data = resp.json()
+        vid = data.get('url') or data.get('video') or data.get('download_url') or (data.get('data') or {}).get('url')
+        if vid:
+            return {'success': True, 'url': vid, 'title': 'Instagram Video', 'platform': 'instagram'}
+        if data.get('medias'):
+            for m in data['medias']:
+                if m.get('type') == 'video' and m.get('url'):
+                    return {'success': True, 'url': m['url'], 'title': 'Instagram Content', 'platform': 'instagram'}
+    except:
+        pass
+
+    # Try indown.io
+    try:
+        resp = requests.get(f'https://indown.io/api/info?url={url}', headers=HEADERS, timeout=10)
+        data = resp.json()
+        vid = data.get('url') or data.get('video') or data.get('download_url')
+        if vid:
+            return {'success': True, 'url': vid, 'title': 'Instagram Video', 'platform': 'instagram'}
+    except:
+        pass
+
+    # Try Instagram oEmbed (works for some restricted content)
+    try:
+        resp = requests.get(
+            f'https://api.instagram.com/oembed?url=https://www.instagram.com/p/{code}/',
+            headers=HEADERS, timeout=8
+        )
+        data = resp.json()
+        if data.get('thumbnail_url'):
+            thumb = data['thumbnail_url']
+            vid_url = thumb.replace('.jpg', '.mp4')
+            h = requests.head(vid_url, headers=HEADERS, timeout=5)
+            if h.status_code == 200 and 'video' in h.headers.get('Content-Type', ''):
+                return {'success': True, 'url': vid_url, 'title': 'Instagram Video', 'platform': 'instagram'}
+    except:
+        pass
+
+    # Final fallback: try to actually download the video via yt-dlp (bypasses some geo checks)
+    try:
+        import uuid, os
+        temp_dir = os.path.join(os.path.dirname(__file__), 'data', 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        fname = str(uuid.uuid4()) + '.mp4'
+        fpath = os.path.join(temp_dir, fname)
+        ydl_opts = {
+            'quiet': True, 'no_warnings': True, 'outtmpl': fpath,
+            'format': 'best[filesize<50M]/best', 'socket_timeout': 30,
+            'retries': 1, 'extractor_retries': 1,
             'extractor_args': {'instagram': {'api': ['mobile']}},
-            'add_headers': {
-                'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.9',
-            },
         }
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            title = info.get('title', 'Instagram Video')[:100]
-            for fmt in info.get('formats', []):
-                if fmt.get('vcodec') != 'none' and fmt.get('ext') in ('mp4', 'webm') and fmt.get('url'):
-                    return {'success': True, 'url': fmt['url'], 'title': title, 'platform': 'instagram'}
-            if info.get('url'):
-                return {'success': True, 'url': info['url'], 'title': title, 'platform': 'instagram'}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+        if os.path.exists(fpath) and os.path.getsize(fpath) < 50 * 1024 * 1024:
+            return {'success': True, 'filepath': fpath, 'title': 'Instagram Video', 'platform': 'instagram'}
     except:
         pass
-
-    # Try Instagram CDN directly via oEmbed
-    try:
-        code_match = re.search(r'(?:reel|p)/([A-Za-z0-9_-]+)', url)
-        if code_match:
-            code = code_match.group(1)
-            resp = requests.get(
-                f'https://i.instagram.com/api/v1/media/{code}/info/',
-                headers={
-                    'User-Agent': 'Instagram 123.0.0.21.115 Android',
-                    'Accept': '*/*',
-                },
-                timeout=15,
-            )
-            data = resp.json()
-            items = data.get('items', [])
-            if items:
-                vid_versions = items[0].get('video_versions', [])
-                if vid_versions:
-                    return {'success': True, 'url': vid_versions[0]['url'], 'title': 'Instagram Video', 'platform': 'instagram'}
-    except:
-        pass
-
-    # Try third-party downloader APIs
-    for api_url in [
-        f'https://instasave.io/api/?url={url}',
-        f'https://api.socialdownloader.com/api/v1/instagram?url={url}',
-        f'https://indown.io/api/info?url={url}',
-    ]:
-        try:
-            resp = requests.get(api_url, headers=HEADERS, timeout=15)
-            data = resp.json()
-            vid = data.get('url') or data.get('video') or data.get('download_url')
-            if vid:
-                return {'success': True, 'url': vid, 'title': 'Instagram Video', 'platform': 'instagram'}
-            if data.get('medias'):
-                for m in data['medias']:
-                    if m.get('type') == 'video' and m.get('url'):
-                        return {'success': True, 'url': m['url'], 'title': 'Instagram Content', 'platform': 'instagram'}
-        except:
-            pass
 
     return None
 
@@ -268,16 +270,12 @@ def download_media(url):
     except yt_dlp.utils.DownloadError as e:
         err_msg = str(e)
 
-        if 'cookies' in err_msg.lower() or 'login required' in err_msg.lower() or 'rate-limit' in err_msg.lower():
-            fallback = FALLBACKS.get(platform)
-            if fallback:
-                result = fallback(url)
-                if result:
-                    return result
-            return {
-                'success': False,
-                'error': f'تعذر تحميل المحتوى من {platform}. المنصة تمنع التحميل المباشر.'
-            }
+        # Always try fallback first before returning an error
+        fallback = FALLBACKS.get(platform)
+        if fallback:
+            result = fallback(url)
+            if result:
+                return result
 
         if 'Private video' in err_msg:
             return {'success': False, 'error': 'هذا الفيديو خاص ولا يمكن تحميله.'}
@@ -291,12 +289,8 @@ def download_media(url):
             return {'success': False, 'error': 'هذا المحتوى يتطلب تسجيل الدخول.'}
         if 'copyright' in err_msg.lower():
             return {'success': False, 'error': 'هذا المحتوى محمي بحقوق النشر.'}
-
-        fallback = FALLBACKS.get(platform)
-        if fallback:
-            result = fallback(url)
-            if result:
-                return result
+        if 'cookies' in err_msg.lower() or 'login required' in err_msg.lower() or 'rate-limit' in err_msg.lower():
+            return {'success': False, 'error': f'تعذر تحميل المحتوى من {platform}. المنصة تمنع التحميل المباشر.'}
 
         return {'success': False, 'error': f'تعذر تحميل المحتوى من {platform}. تأكد من صحة الرابط.'}
 

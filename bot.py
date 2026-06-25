@@ -504,13 +504,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]])
 
             try:
-                await update.message.reply_video(
-                    video=result['url'],
-                    caption=caption,
-                    parse_mode='HTML',
-                    supports_streaming=True,
-                    reply_markup=audio_button
-                )
+                # If the result has a filepath (downloaded already), send that
+                if result.get('filepath'):
+                    with open(result['filepath'], 'rb') as vid_file:
+                        await update.message.reply_video(
+                            video=vid_file, caption=caption,
+                            parse_mode='HTML', supports_streaming=True,
+                            reply_markup=audio_button
+                        )
+                    try:
+                        os.remove(result['filepath'])
+                    except:
+                        pass
+                else:
+                    await update.message.reply_video(
+                        video=result['url'],
+                        caption=caption,
+                        parse_mode='HTML',
+                        supports_streaming=True,
+                        reply_markup=audio_button
+                    )
             except Exception as e:
                 err = str(e)
                 if 'too large' in err.lower() or '413' in err:
@@ -549,9 +562,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except:
                         pass
                     if not fallback_sent:
+                        url_or_path = result.get('filepath') or result.get('url', '')
                         await update.message.reply_text(
                             f"❌ <b>حدث خطأ أثناء إرسال الفيديو.</b>\n\n"
-                            f"رابط التحميل المباشر:\n{result['url']}",
+                            f"رابط التحميل المباشر:\n{url_or_path}",
                             parse_mode='HTML'
                         )
         else:
